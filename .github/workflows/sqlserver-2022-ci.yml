@@ -58,6 +58,18 @@ jobs:
           docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < scripts/core/02_Blocking_Deadlocks.sql
       - name: Backup restore and permission assertions
         run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/05_Backup_Restore_Permissions.sql
+      - name: Install clean DEV security refresh engine
+        run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < scripts/refresh/00_Install_DevSecuritySnapshot.sql
+      - name: Restore PROD data while replacing security with DEV snapshot
+        run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/06_Clean_DEV_Security_Refresh.sql
+      - name: Parse SQLCMD refresh operator templates
+        run: |
+          for file in scripts/refresh/01_Capture_DEV_Security.sql scripts/refresh/02_Backup_PROD_Database.sql scripts/refresh/03_Restore_PROD_Over_DEV_And_Reapply_Security.sql; do
+            echo "Parsing $file"
+            sed '/^:setvar/d' "$file" | sed 's/$(DevDatabase)/DBA_Toolkit_Refresh_DEV/g; s/$(ProdDatabase)/DBA_Toolkit_Refresh_PROD/g; s/$(SnapshotId)/00000000-0000-0000-0000-000000000001/g; s#$(BackupFile)#/var/opt/mssql/backup/template.bak#g; s#$(DataPath)#/var/opt/mssql/data/#g; s#$(LogPath)#/var/opt/mssql/data/#g' \
+              | { echo "SET PARSEONLY ON;"; cat; } \
+              | docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin
+          done
       - name: Execute all core collectors
         run: |
           for file in scripts/core/*.sql; do
