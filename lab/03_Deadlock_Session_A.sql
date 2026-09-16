@@ -1,0 +1,15 @@
+USE DBA_Toolkit_Lab;
+SET NOCOUNT ON;
+SET DEADLOCK_PRIORITY LOW;
+BEGIN TRY
+ BEGIN TRANSACTION;
+ UPDATE dbo.Account SET Balance=Balance+10 WHERE AccountId=1;
+ WAITFOR DELAY '00:00:03';
+ UPDATE dbo.Account SET Balance=Balance-10 WHERE AccountId=2;
+ COMMIT;
+END TRY
+BEGIN CATCH
+ IF XACT_STATE()<>0 ROLLBACK;
+ IF ERROR_NUMBER()<>1205 THROW;
+ PRINT 'Expected deadlock victim: session A';
+END CATCH;
