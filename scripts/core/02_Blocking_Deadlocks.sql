@@ -1,5 +1,7 @@
 /* Validation: EXECUTED-CI | Collector is read-only; XE creation gated by @CreateXE */
 SET NOCOUNT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 DECLARE @CreateXE bit=0;
 
