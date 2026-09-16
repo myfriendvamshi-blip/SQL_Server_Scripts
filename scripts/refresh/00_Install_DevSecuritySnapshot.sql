@@ -225,17 +225,19 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
 
 ;WITH PermissionSource AS
 (
- SELECT p.*,grantee.name AS grantee_name,grantor.name AS grantor_name,
-        targetp.name AS target_principal_name,targetp.type AS target_principal_type,
-        os.name AS object_schema_name,o.name AS object_name,c.name AS column_name,
-        ss.name AS schema_name,a.name AS assembly_name,
-        ts.name AS type_schema_name,t.name AS type_name,
-        xs.name AS xml_schema_name,x.name AS xml_name,
-        mt.name AS message_type_name,sc.name AS contract_name,svc.name AS service_name,
-        rsb.name AS remote_binding_name,r.name AS route_name,fc.name AS fulltext_catalog_name,
-        sk.name AS symmetric_key_name,cert.name AS certificate_name,ak.name AS asymmetric_key_name,
-        fsl.name AS stoplist_name,spl.name AS property_list_name,dsc.name AS credential_name,
-        el.language AS external_language_name
+ SELECT p.*,grantee.name COLLATE DATABASE_DEFAULT AS grantee_name,grantor.name COLLATE DATABASE_DEFAULT AS grantor_name,
+        targetp.name COLLATE DATABASE_DEFAULT AS target_principal_name,targetp.type AS target_principal_type,
+        os.name COLLATE DATABASE_DEFAULT AS object_schema_name,o.name COLLATE DATABASE_DEFAULT AS object_name,
+        c.name COLLATE DATABASE_DEFAULT AS column_name,ss.name COLLATE DATABASE_DEFAULT AS schema_name,
+        a.name COLLATE DATABASE_DEFAULT AS assembly_name,ts.name COLLATE DATABASE_DEFAULT AS type_schema_name,
+        t.name COLLATE DATABASE_DEFAULT AS type_name,xs.name COLLATE DATABASE_DEFAULT AS xml_schema_name,
+        x.name COLLATE DATABASE_DEFAULT AS xml_name,mt.name COLLATE DATABASE_DEFAULT AS message_type_name,
+        sc.name COLLATE DATABASE_DEFAULT AS contract_name,svc.name COLLATE DATABASE_DEFAULT AS service_name,
+        rsb.name COLLATE DATABASE_DEFAULT AS remote_binding_name,r.name COLLATE DATABASE_DEFAULT AS route_name,
+        fc.name COLLATE DATABASE_DEFAULT AS fulltext_catalog_name,sk.name COLLATE DATABASE_DEFAULT AS symmetric_key_name,
+        cert.name COLLATE DATABASE_DEFAULT AS certificate_name,ak.name COLLATE DATABASE_DEFAULT AS asymmetric_key_name,
+        fsl.name COLLATE DATABASE_DEFAULT AS stoplist_name,spl.name COLLATE DATABASE_DEFAULT AS property_list_name,
+        dsc.name COLLATE DATABASE_DEFAULT AS credential_name,el.language COLLATE DATABASE_DEFAULT AS external_language_name
  FROM sys.database_permissions AS p
  JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
  JOIN sys.database_principals AS grantor ON grantor.principal_id=p.grantor_principal_id
@@ -392,15 +394,19 @@ BEGIN TRY
  /* Remove all restored explicit permissions, including grants to public/fixed roles. */
  ;WITH PermissionSource AS
  (
-  SELECT p.*,grantee.name AS grantee_name,targetp.name AS target_principal_name,
-         targetp.type AS target_principal_type,os.name AS object_schema_name,o.name AS object_name,
-         c.name AS column_name,ss.name AS schema_name,a.name AS assembly_name,
-         ts.name AS type_schema_name,t.name AS type_name,xs.name AS xml_schema_name,x.name AS xml_name,
-         mt.name AS message_type_name,sc.name AS contract_name,svc.name AS service_name,
-         rsb.name AS remote_binding_name,r.name AS route_name,fc.name AS fulltext_catalog_name,
-         sk.name AS symmetric_key_name,cert.name AS certificate_name,ak.name AS asymmetric_key_name,
-         fsl.name AS stoplist_name,spl.name AS property_list_name,dsc.name AS credential_name,
-         el.language AS external_language_name
+  SELECT p.*,grantee.name COLLATE DATABASE_DEFAULT AS grantee_name,targetp.name COLLATE DATABASE_DEFAULT AS target_principal_name,
+         targetp.type AS target_principal_type,os.name COLLATE DATABASE_DEFAULT AS object_schema_name,
+         o.name COLLATE DATABASE_DEFAULT AS object_name,c.name COLLATE DATABASE_DEFAULT AS column_name,
+         ss.name COLLATE DATABASE_DEFAULT AS schema_name,a.name COLLATE DATABASE_DEFAULT AS assembly_name,
+         ts.name COLLATE DATABASE_DEFAULT AS type_schema_name,t.name COLLATE DATABASE_DEFAULT AS type_name,
+         xs.name COLLATE DATABASE_DEFAULT AS xml_schema_name,x.name COLLATE DATABASE_DEFAULT AS xml_name,
+         mt.name COLLATE DATABASE_DEFAULT AS message_type_name,sc.name COLLATE DATABASE_DEFAULT AS contract_name,
+         svc.name COLLATE DATABASE_DEFAULT AS service_name,rsb.name COLLATE DATABASE_DEFAULT AS remote_binding_name,
+         r.name COLLATE DATABASE_DEFAULT AS route_name,fc.name COLLATE DATABASE_DEFAULT AS fulltext_catalog_name,
+         sk.name COLLATE DATABASE_DEFAULT AS symmetric_key_name,cert.name COLLATE DATABASE_DEFAULT AS certificate_name,
+         ak.name COLLATE DATABASE_DEFAULT AS asymmetric_key_name,fsl.name COLLATE DATABASE_DEFAULT AS stoplist_name,
+         spl.name COLLATE DATABASE_DEFAULT AS property_list_name,dsc.name COLLATE DATABASE_DEFAULT AS credential_name,
+         el.language COLLATE DATABASE_DEFAULT AS external_language_name
   FROM sys.database_permissions AS p
   JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
   LEFT JOIN sys.database_principals AS targetp ON p.class=4 AND targetp.principal_id=p.major_id
