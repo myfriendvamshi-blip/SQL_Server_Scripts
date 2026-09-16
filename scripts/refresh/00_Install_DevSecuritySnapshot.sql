@@ -222,7 +222,8 @@ SELECT @SnapshotId,500000+ROW_NUMBER() OVER(ORDER BY rolep.name,memberp.name),''
        N''ALTER ROLE ''+QUOTENAME(rolep.name)+N'' ADD MEMBER ''+QUOTENAME(memberp.name)+N'';''
 FROM sys.database_role_members AS rm
 JOIN sys.database_principals AS rolep ON rolep.principal_id=rm.role_principal_id
-JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id;
+JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id
+WHERE memberp.name<>N''dbo'';
 
 ;WITH PermissionSource AS
 (
@@ -265,7 +266,7 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
  LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
  LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
  LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
- WHERE NOT (p.class=1 AND p.major_id<0)
+ WHERE grantee.name<>N''dbo'' AND NOT (p.class=1 AND p.major_id<0)
 )
 SELECT *,
    CASE class
@@ -323,8 +324,14 @@ DROP TABLE #CapturedPermissions;
 
 SELECT @PrincipalCountOut=COUNT(*)
 FROM sys.database_principals WHERE principal_id>4 AND is_fixed_role=0;
-SELECT @MembershipCountOut=COUNT(*) FROM sys.database_role_members;
-SELECT @PermissionCountOut=COUNT(*) FROM sys.database_permissions WHERE NOT (class=1 AND major_id<0);
+SELECT @MembershipCountOut=COUNT(*)
+FROM sys.database_role_members AS rm
+JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id
+WHERE memberp.name<>N''dbo'';
+SELECT @PermissionCountOut=COUNT(*)
+FROM sys.database_permissions AS p
+JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
+WHERE grantee.name<>N''dbo'' AND NOT (p.class=1 AND p.major_id<0);
 SELECT @SchemaOwnerCountOut=COUNT(*) FROM sys.schemas WHERE schema_id>4;';
 
     DECLARE @PrincipalCount int,@MembershipCount int,@PermissionCount int,@SchemaOwnerCount int;
@@ -434,7 +441,7 @@ BEGIN TRY
   LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
   LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
   LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
-  WHERE NOT (p.class=1 AND p.major_id<0)
+  WHERE grantee.name<>N''dbo'' AND NOT (p.class=1 AND p.major_id<0)
  )
  SELECT *,CASE class
     WHEN 0 THEN N''''
@@ -488,7 +495,8 @@ BEGIN TRY
  SELECT N''ALTER ROLE ''+QUOTENAME(rolep.name)+N'' DROP MEMBER ''+QUOTENAME(memberp.name)+N'';''
  FROM sys.database_role_members AS rm
  JOIN sys.database_principals AS rolep ON rolep.principal_id=rm.role_principal_id
- JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id;
+ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id
+ WHERE memberp.name<>N''dbo'';
  DECLARE membership_cursor CURSOR LOCAL FAST_FORWARD FOR SELECT command_text FROM #Work ORDER BY work_order;
  OPEN membership_cursor; FETCH NEXT FROM membership_cursor INTO @Command;
  WHILE @@FETCH_STATUS=0
@@ -552,9 +560,15 @@ BEGIN TRY
 
  IF (SELECT COUNT(*) FROM sys.database_principals WHERE principal_id>4 AND is_fixed_role=0)<>@ExpectedPrincipals
    THROW 51111, ''Principal count validation failed; the database was not opened.'', 1;
- IF (SELECT COUNT(*) FROM sys.database_role_members)<>@ExpectedMemberships
+ IF (SELECT COUNT(*)
+     FROM sys.database_role_members AS rm
+     JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_principal_id
+     WHERE memberp.name<>N''dbo'')<>@ExpectedMemberships
    THROW 51112, ''Role membership validation failed; the database was not opened.'', 1;
- IF (SELECT COUNT(*) FROM sys.database_permissions WHERE NOT (class=1 AND major_id<0))<>@ExpectedPermissions
+ IF (SELECT COUNT(*)
+     FROM sys.database_permissions AS p
+     JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
+     WHERE grantee.name<>N''dbo'' AND NOT (p.class=1 AND p.major_id<0))<>@ExpectedPermissions
    THROW 51113, ''Explicit permission validation failed; the database was not opened.'', 1;
 
  COMMIT;
