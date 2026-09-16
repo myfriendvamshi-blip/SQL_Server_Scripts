@@ -17,7 +17,7 @@
 | `scripts/specialized/Replication_CDC_ChangeTracking.sql` | PARSED-CI, LAB-REQUIRED | Functional test requires configured topology/features |
 | `scripts/specialized/Encryption_TDE.sql` | PARSED-CI, LAB-REQUIRED | Functional test requires TDE/key lifecycle lab |
 | `scripts/specialized/MSDB_DatabaseMail.sql` | PARSED-CI, LAB-REQUIRED | Functional test requires Database Mail/SMTP |
-| `powershell/Test-SqlConnectivity.ps1` | REVIEWED, LAB-REQUIRED | Run from the same network path as affected client |
+| `powershell/Test-SqlConnectivity.ps1` | PARSED-CI, LAB-REQUIRED | PowerShell AST parse; functional test must run from the affected client network path |
 | `lab/00_Setup.sql` | EXECUTED-CI | Creates lab, skew, Query Store, CHECKDB |
 | `lab/01_Blocker_Session.sql` | EXECUTED-CI | Background blocker |
 | `lab/02_Blocked_Session.sql` | EXECUTED-CI | Waits on blocker and completes |
