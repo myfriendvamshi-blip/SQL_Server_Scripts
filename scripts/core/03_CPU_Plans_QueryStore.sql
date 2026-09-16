@@ -26,7 +26,7 @@ SELECT DB_NAME(database_id) AS database_name,OBJECT_SCHEMA_NAME(object_id,databa
 FROM sys.dm_exec_procedure_stats
 ORDER BY total_worker_time DESC;
 
-SELECT name,actual_state_desc,desired_state_desc,readonly_reason,current_storage_size_mb,
+SELECT DB_NAME() AS database_name,actual_state_desc,desired_state_desc,readonly_reason,current_storage_size_mb,
        max_storage_size_mb,query_capture_mode_desc,size_based_cleanup_mode_desc,
-       stale_query_threshold_days,data_flush_interval_seconds
+       stale_query_threshold_days,flush_interval_seconds
 FROM sys.database_query_store_options;
