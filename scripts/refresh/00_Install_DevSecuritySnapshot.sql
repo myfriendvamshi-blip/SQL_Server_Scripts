@@ -113,7 +113,8 @@ WHERE dp.principal_id>4 AND dp.is_fixed_role=0
 
 SELECT @UnsupportedPermissionsOut=COUNT(*)
 FROM sys.database_permissions
-WHERE class NOT IN (0,1,3,4,5,6,10,15,16,17,18,19,23,24,25,26,29,31,32,34);';
+WHERE NOT (class=1 AND major_id<0)
+  AND class NOT IN (0,1,3,4,5,6,10,15,16,17,18,19,23,24,25,26,29,31,32,34);';
     EXEC sys.sp_executesql @Preflight,
       N'@UnsupportedOut int OUTPUT,@MissingLoginsOut int OUTPUT,@UnsupportedPermissionsOut int OUTPUT',
       @UnsupportedOut=@Unsupported OUTPUT,
@@ -264,6 +265,7 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
  LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
  LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
  LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
+ WHERE NOT (p.class=1 AND p.major_id<0)
 )
 SELECT *,
    CASE class
@@ -322,7 +324,7 @@ DROP TABLE #CapturedPermissions;
 SELECT @PrincipalCountOut=COUNT(*)
 FROM sys.database_principals WHERE principal_id>4 AND is_fixed_role=0;
 SELECT @MembershipCountOut=COUNT(*) FROM sys.database_role_members;
-SELECT @PermissionCountOut=COUNT(*) FROM sys.database_permissions;
+SELECT @PermissionCountOut=COUNT(*) FROM sys.database_permissions WHERE NOT (class=1 AND major_id<0);
 SELECT @SchemaOwnerCountOut=COUNT(*) FROM sys.schemas WHERE schema_id>4;';
 
     DECLARE @PrincipalCount int,@MembershipCount int,@PermissionCount int,@SchemaOwnerCount int;
@@ -432,6 +434,7 @@ BEGIN TRY
   LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
   LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
   LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
+  WHERE NOT (p.class=1 AND p.major_id<0)
  )
  SELECT *,CASE class
     WHEN 0 THEN N''''
@@ -551,7 +554,7 @@ BEGIN TRY
    THROW 51111, ''Principal count validation failed; the database was not opened.'', 1;
  IF (SELECT COUNT(*) FROM sys.database_role_members)<>@ExpectedMemberships
    THROW 51112, ''Role membership validation failed; the database was not opened.'', 1;
- IF (SELECT COUNT(*) FROM sys.database_permissions)<>@ExpectedPermissions
+ IF (SELECT COUNT(*) FROM sys.database_permissions WHERE NOT (class=1 AND major_id<0))<>@ExpectedPermissions
    THROW 51113, ''Explicit permission validation failed; the database was not opened.'', 1;
 
  COMMIT;
