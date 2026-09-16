@@ -17,6 +17,7 @@ CREATE DATABASE DBA_Toolkit_Refresh_PROD;
 GO
 
 USE DBA_Toolkit_Refresh_DEV;
+GO
 CREATE SCHEMA DevOwned AUTHORIZATION dbo;
 GO
 USE DBA_Toolkit_Refresh_DEV;
@@ -33,6 +34,7 @@ GRANT SELECT TO public;
 GO
 
 USE DBA_Toolkit_Refresh_PROD;
+GO
 CREATE SCHEMA DevOwned AUTHORIZATION dbo;
 GO
 USE DBA_Toolkit_Refresh_PROD;
