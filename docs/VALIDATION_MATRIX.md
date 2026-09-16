@@ -32,3 +32,24 @@
 | `lab/99_Cleanup.sql` | EXECUTED-CI | Removes only named lab objects |
 
 The Actions run is the source of truth. A green workflow proves execution only for the image digest/build used by that run; it does not prove every production topology, edition, permission set or workload.
+
+## Issue #3 Phase 1 increment
+
+These are the workflow's coverage contracts, not a claim that every listed scenario
+has passed. Consult the PR's exact SHA/run result. The workflow prints the image digest
+and SQL build. It does not publish a SQL port or accept an external SQL endpoint.
+
+| File | Execution path | Explicit limits |
+|---|---|---|
+| `scripts/scenarios/01_Access.sql` | Lab 07 executes before/after real SID remap; asserts alias, disabled login, orphan, WITHOUT LOGIN | No real login-failure state, contained-password, AD or Entra tests |
+| `scripts/scenarios/02_Recovery_Evidence.sql` | Lab 08 executes source and restored-copy inventories; asserts differential UUID and checksum flags | Inventory, not automated chain selection; no damaged/fork/stripe/TDE tests |
+| `scripts/scenarios/03_Restore_Dependencies.sql` | Lab 07 executes every query; asserts cross-database view reference | Agent/proxy/TDE/linked server branches may return empty; integrations LAB-REQUIRED |
+| `scripts/scenarios/04_Integrity_Evidence.sql` | Lab 07 executes healthy metadata/suspect-page query; separate CHECKDB | No 823/824/825 reproduction or repair |
+| `scripts/scenarios/05_Security_Evidence.sql` | Lab 07 executes queries; asserts object deny, column grant and effective permission | Empty Audit configuration path only; not forensic event attribution or full drift engine |
+| `lab/07_Phase1_Evidence.sql` | Disposable fixtures, assertions, SID remap, CHECKDB, cleanup | Mutation permitted in isolated CI only |
+| `lab/08_Phase1_PITR.sql` | Full + differential + log, actual STOPAT restore, row inclusion/exclusion and CHECKDB | Positive single-file FULL-recovery case only |
+
+The pre-existing 10 core SQL collectors are executed by the unchanged suite. Five
+specialized SQL collectors and three refresh operator templates are **PARSED ONLY**;
+the PowerShell connectivity script receives AST parsing only. The refresh engine and
+lab 06 execute, but not the operator templates. See [safety review](REFRESH_SAFETY_REVIEW.md).

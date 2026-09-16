@@ -6,18 +6,22 @@ USE master;
 IF N'$(DisposableLab)'<>N'YES' THROW 51500,'Disposable CI opt-in required.',1;
 IF DB_ID(N'DBA_Toolkit_Phase1') IS NOT NULL OR SUSER_ID(N'DBA_Toolkit_Phase1_Login') IS NOT NULL
  OR SUSER_ID(N'DBA_Toolkit_Phase1_Disabled') IS NOT NULL OR SUSER_ID(N'DBA_Toolkit_Phase1_Repair') IS NOT NULL
+ OR SUSER_ID(N'DBA_Toolkit_Phase1_Orphan') IS NOT NULL
  THROW 51501,'Fixture collision. Refusing to replace existing objects.',1;
 CREATE DATABASE DBA_Toolkit_Phase1;
 CREATE LOGIN DBA_Toolkit_Phase1_Login WITH PASSWORD='Fixture_Only!Phase1_2026',CHECK_POLICY=OFF;
 CREATE LOGIN DBA_Toolkit_Phase1_Disabled WITH PASSWORD='Fixture_Only!Phase1_2026',CHECK_POLICY=OFF;
 CREATE LOGIN DBA_Toolkit_Phase1_Repair WITH PASSWORD='Fixture_Only!Phase1_2026',CHECK_POLICY=OFF;
+CREATE LOGIN DBA_Toolkit_Phase1_Orphan WITH PASSWORD='Fixture_Only!Phase1_2026',CHECK_POLICY=OFF;
 ALTER LOGIN DBA_Toolkit_Phase1_Disabled DISABLE;
 GO
 USE DBA_Toolkit_Phase1;
 CREATE USER AliasDifferentFromLogin FOR LOGIN DBA_Toolkit_Phase1_Login;
 CREATE USER DisabledIdentity FOR LOGIN DBA_Toolkit_Phase1_Disabled;
 CREATE USER NoLoginIdentity WITHOUT LOGIN;
-CREATE USER OrphanIdentity WITH SID=0x11112222333344445555666677778888,TYPE=S;
+CREATE USER OrphanIdentity FOR LOGIN DBA_Toolkit_Phase1_Orphan;
+/* Reproduce an actual orphan instead of using Azure-specific CREATE USER syntax. */
+DROP LOGIN DBA_Toolkit_Phase1_Orphan;
 CREATE TABLE dbo.Payload(id int NOT NULL PRIMARY KEY,secret_value int);
 CREATE ROLE FixtureReaders;
 ALTER ROLE FixtureReaders ADD MEMBER AliasDifferentFromLogin;
