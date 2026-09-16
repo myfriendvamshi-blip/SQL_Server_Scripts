@@ -4,6 +4,11 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 
 ## Quick start
 
+For issue #3's scenario-specific access/recovery/security increment, start with
+[`docs/PHASE1_RUNBOOKS.md`](docs/PHASE1_RUNBOOKS.md) and `scripts/scenarios`.
+The existing refresh workflow has unresolved [safety findings](docs/REFRESH_SAFETY_REVIEW.md);
+do not infer production readiness from the CI happy-path.
+
 1. Start with [`scripts/core/00_First_Response.sql`](scripts/core/00_First_Response.sql).
 2. Run the subject-specific collector from `scripts/core`.
 3. Use `scripts/specialized` only when its prerequisites are satisfied.
@@ -35,7 +40,9 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 - Core collectors are read-only.
 - Remediation is not automatic. Generated commands are output for review.
 - No production collector runs `KILL`, `DBCC ... REPAIR_ALLOW_DATA_LOSS`, `DROP DATABASE`, cache-clearing commands, shrink, failover, or server reconfiguration. Lab setup/cleanup drops only the explicitly named disposable lab databases.
-- Lab scripts abort unless the database is named `DBA_Toolkit_Lab`.
+- Lab scripts use fixed disposable fixture names. Phase 1 labs additionally require an
+  explicit CI opt-in and refuse pre-existing fixtures; these are accident guards, not
+  proof of environment isolation. Never point any lab script at a real instance.
 - Test artifacts are disposable and isolated inside GitHub Actions SQL Server 2022 Developer Edition.
 
 ## Validation levels
