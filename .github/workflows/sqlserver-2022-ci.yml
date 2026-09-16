@@ -1,0 +1,92 @@
+name: SQL Server 2022 validation
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlserver-2022:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create disposable masked credential
+        run: |
+          password="Toolkit_CI!${GITHUB_RUN_ID}Strong"
+          echo "::add-mask::$password"
+          echo "SA_PASSWORD=$password" >> "$GITHUB_ENV"
+      - name: Start SQL Server 2022 Developer
+        run: |
+          docker run -d --name sql2022 \
+            -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
+            -p 1433:1433 -v sqlbackup:/var/opt/mssql/backup \
+            mcr.microsoft.com/mssql/server:2022-latest
+          docker exec -u 0 sql2022 chown -R mssql:mssql /var/opt/mssql/backup
+          for i in {1..60}; do
+            if docker exec sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" -b; then exit 0; fi
+            sleep 2
+          done
+          docker logs sql2022
+          exit 1
+      - name: Setup disposable lab
+        run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/00_Setup.sql
+      - name: Run blocking scenario and collector
+        run: |
+          docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/01_Blocker_Session.sql &
+          blocker=$!
+          sleep 2
+          docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/02_Blocked_Session.sql &
+          blocked=$!
+          sleep 2
+          output=$(docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -W -h-1 -i /dev/stdin < scripts/core/02_Blocking_Deadlocks.sql)
+          echo "$output"
+          echo "$output" | grep -Eq "LCK_M_|xml_deadlock_report|session_id"
+          wait $blocker
+          wait $blocked
+      - name: Run deadlock scenario
+        run: |
+          docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/03_Deadlock_Session_A.sql & a=$!
+          docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/04_Deadlock_Session_B.sql & b=$!
+          wait $a
+          wait $b
+          sleep 2
+          docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < scripts/core/02_Blocking_Deadlocks.sql
+      - name: Backup restore and permission assertions
+        run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/05_Backup_Restore_Permissions.sql
+      - name: Execute all core collectors
+        run: |
+          for file in scripts/core/*.sql; do
+            echo "Executing $file"
+            docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < "$file"
+          done
+      - name: Parse specialized collectors
+        run: |
+          for file in scripts/specialized/*.sql; do
+            echo "Parsing $file"
+            { echo "SET PARSEONLY ON;"; cat "$file"; } | docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin
+          done
+      - name: Parse PowerShell connectivity diagnostic
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'powershell/Test-SqlConnectivity.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            throw 'PowerShell parser found one or more syntax errors.'
+          }
+      - name: Cleanup
+        if: always()
+        run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/99_Cleanup.sql || true
+      - name: SQL Server logs on failure
+        if: failure()
+        run: docker logs sql2022

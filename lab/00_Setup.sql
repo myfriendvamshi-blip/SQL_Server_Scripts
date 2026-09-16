@@ -1,0 +1,45 @@
+/* LAB ONLY. Validation: EXECUTED-CI. Creates disposable DBA_Toolkit_Lab. */
+USE master;
+SET NOCOUNT ON;
+IF DB_ID(N'DBA_Toolkit_Lab') IS NOT NULL
+BEGIN
+ ALTER DATABASE DBA_Toolkit_Lab SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ DROP DATABASE DBA_Toolkit_Lab;
+END;
+CREATE DATABASE DBA_Toolkit_Lab;
+ALTER DATABASE DBA_Toolkit_Lab SET RECOVERY FULL;
+ALTER DATABASE DBA_Toolkit_Lab SET QUERY_STORE=ON
+ (OPERATION_MODE=READ_WRITE,QUERY_CAPTURE_MODE=AUTO,DATA_FLUSH_INTERVAL_SECONDS=60);
+GO
+USE DBA_Toolkit_Lab;
+CREATE TABLE dbo.Account
+(
+ AccountId int NOT NULL CONSTRAINT PK_Account PRIMARY KEY,
+ Balance decimal(19,4) NOT NULL,
+ Padding char(200) NOT NULL CONSTRAINT DF_Account_Padding DEFAULT(REPLICATE('X',200))
+);
+INSERT dbo.Account(AccountId,Balance) VALUES(1,1000),(2,1000),(3,1000);
+
+CREATE TABLE dbo.SkewedOrders
+(
+ OrderId int IDENTITY(1,1) NOT NULL CONSTRAINT PK_SkewedOrders PRIMARY KEY,
+ CustomerId int NOT NULL,
+ OrderDate date NOT NULL,
+ Amount money NOT NULL
+);
+WITH n AS
+(
+ SELECT TOP (20000) ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS n
+ FROM sys.all_objects a CROSS JOIN sys.all_objects b
+)
+INSERT dbo.SkewedOrders(CustomerId,OrderDate,Amount)
+SELECT CASE WHEN n<=19000 THEN 1 ELSE n END,DATEADD(day,-(n%365),CONVERT(date,GETDATE())),n%500
+FROM n;
+CREATE INDEX IX_SkewedOrders_CustomerId ON dbo.SkewedOrders(CustomerId) INCLUDE(OrderDate,Amount);
+GO
+CREATE OR ALTER PROCEDURE dbo.GetOrdersByCustomer @CustomerId int AS
+BEGIN SET NOCOUNT ON; SELECT OrderId,OrderDate,Amount FROM dbo.SkewedOrders WHERE CustomerId=@CustomerId; END;
+GO
+CHECKPOINT;
+DBCC CHECKDB(N'DBA_Toolkit_Lab') WITH NO_INFOMSGS,ALL_ERRORMSGS;
+GO
