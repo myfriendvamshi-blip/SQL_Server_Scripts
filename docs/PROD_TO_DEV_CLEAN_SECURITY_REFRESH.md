@@ -2,7 +2,13 @@
 
 ## Outcome
 
-The workflow restores production **data and database objects** into DEV but does not leave production database users, custom roles, role memberships, explicit grants/denies, schema owners, or object owners in the refreshed database. It captures the existing DEV security in `DBA_Admin`, overwrites DEV, removes restored PROD security, and replays only the saved DEV security.
+> **Safety qualification (2026-09-16):** This is an experimental destructive workflow,
+> not a production-approved isolation mechanism. Read [the safety review](REFRESH_SAFETY_REVIEW.md).
+> SINGLE_USER is not an access-control boundary; exact permission equivalence is not
+> established by counts. The template runs CHECKDB after MULTI_USER, so its failure can
+> leave the target open. External isolation is required even if the lab passes.
+
+The workflow intends to restore production **data and database objects** into DEV and replace the tested subset of database security. The existing lab demonstrates a limited SQL-login/role/permission example, not every security surface. It captures DEV security in `DBA_Admin`, overwrites DEV, removes restored principals/permissions and replays the snapshot; review the limitations before use.
 
 A SQL Server database backup always contains database-level security metadata. `RESTORE DATABASE` has no option to exclude users or permissions, so security replacement must happen immediately after recovery.
 

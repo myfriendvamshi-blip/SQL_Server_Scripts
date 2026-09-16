@@ -24,7 +24,7 @@ jobs:
         run: |
           docker run -d --name sql2022 \
             -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
-            -p 1433:1433 -v sqlbackup:/var/opt/mssql/backup \
+            -v sqlbackup:/var/opt/mssql/backup \
             mcr.microsoft.com/mssql/server:2022-latest
           docker exec -u 0 sql2022 chown -R mssql:mssql /var/opt/mssql/backup
           for i in {1..60}; do
@@ -35,6 +35,16 @@ jobs:
           exit 1
       - name: Setup disposable lab
         run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/00_Setup.sql
+      - name: Record exact image and SQL build
+        run: |
+          docker image inspect mcr.microsoft.com/mssql/server:2022-latest --format '{{json .RepoDigests}}'
+          docker exec sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -Q 'SELECT @@VERSION;'
+      - name: Phase 1 evidence and PITR assertions
+        run: |
+          docker cp scripts sql2022:/tmp/scripts
+          docker cp lab sql2022:/tmp/lab
+          docker exec -w /tmp sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -v DisposableLab=YES -i lab/07_Phase1_Evidence.sql
+          docker exec -w /tmp sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -v DisposableLab=YES -i lab/08_Phase1_PITR.sql
       - name: Run blocking scenario and collector
         run: |
           docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/01_Blocker_Session.sql &
@@ -102,3 +112,8 @@ jobs:
       - name: SQL Server logs on failure
         if: failure()
         run: docker logs sql2022
+      - name: Destroy disposable instance and backup volume
+        if: always()
+        run: |
+          docker rm -f sql2022 || true
+          docker volume rm sqlbackup || true
