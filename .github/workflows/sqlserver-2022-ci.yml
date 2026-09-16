@@ -70,6 +70,20 @@ jobs:
             echo "Parsing $file"
             { echo "SET PARSEONLY ON;"; cat "$file"; } | docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin
           done
+      - name: Parse PowerShell connectivity diagnostic
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'powershell/Test-SqlConnectivity.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            throw 'PowerShell parser found one or more syntax errors.'
+          }
       - name: Cleanup
         if: always()
         run: docker exec -i sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -i /dev/stdin < lab/99_Cleanup.sql || true

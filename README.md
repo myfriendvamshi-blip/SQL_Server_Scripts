@@ -24,6 +24,9 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 | Integrity | suspect pages, CHECKDB history, corruption evidence and safe response order |
 | Security | principals, role membership, explicit permissions, orphaned users, impersonation |
 | Operations | Agent failures, schedules, owners, long-running jobs, capacity and configuration |
+| Data movement | replication, CDC and Change Tracking inventory and agent history |
+| Encryption | TDE state, certificates and key metadata without secret material |
+| Client testing | PowerShell DNS, TCP, TLS, authentication and query validation |
 
 ## Safety contract
 
@@ -43,6 +46,7 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 | `LAB-REQUIRED` | Requires SQL Agent, Windows/WSFC, AG replicas, SSIS, or external infrastructure |
 
 See [`docs/VALIDATION_MATRIX.md`](docs/VALIDATION_MATRIX.md) for per-file evidence.
+The [`docs/SCENARIO_CATALOG.md`](docs/SCENARIO_CATALOG.md) maps the toolkit to 50 senior-DBA incident families.
 
 ## Open-source position
 
