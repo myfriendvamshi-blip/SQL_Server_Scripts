@@ -2,7 +2,7 @@
    Requires VIEW ANY DEFINITION at server and VIEW DEFINITION in this database.
    Runbook: docs/PHASE1_RUNBOOKS.md. No password hashes or repair execution. */
 SET NOCOUNT ON;
-IF COALESCE(HAS_PERMS_BY_NAME(NULL,'SERVER','VIEW ANY DEFINITION'),0)<>1
+IF COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,'VIEW ANY DEFINITION'),0)<>1
  OR COALESCE(HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DEFINITION'),0)<>1
     THROW 51400,'Complete metadata visibility is required; absence is not evidence of absence.',1;
 DROP TABLE IF EXISTS #AccessEvidence;

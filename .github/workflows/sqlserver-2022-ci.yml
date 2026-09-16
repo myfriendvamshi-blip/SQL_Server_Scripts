@@ -43,6 +43,7 @@ jobs:
         run: |
           docker cp scripts sql2022:/tmp/scripts
           docker cp lab sql2022:/tmp/lab
+          bash tests/phase1_guards.sh
           docker exec -w /tmp sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -v DisposableLab=YES -i lab/07_Phase1_Evidence.sql
           docker exec -w /tmp sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -b -v DisposableLab=YES -i lab/08_Phase1_PITR.sql
       - name: Run blocking scenario and collector
