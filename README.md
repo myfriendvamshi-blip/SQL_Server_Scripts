@@ -9,6 +9,7 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 3. Use `scripts/specialized` only when its prerequisites are satisfied.
 4. Reproduce the symptom in the disposable scripts under `lab`; never run lab scripts in production.
 5. Read [`docs/DECISION_TREE.md`](docs/DECISION_TREE.md) for symptom-to-script routing.
+6. For a PROD-to-DEV refresh that preserves only DEV database security, follow [`docs/PROD_TO_DEV_CLEAN_SECURITY_REFRESH.md`](docs/PROD_TO_DEV_CLEAN_SECURITY_REFRESH.md).
 
 ## Coverage
 
@@ -20,6 +21,7 @@ An evidence-driven SQL Server 2022 troubleshooting library for senior and lead D
 | Concurrency | blocking chains, sleeping blockers, open transactions, deadlock XE setup/parser |
 | Storage | database files, volumes, VLFs, log reuse, tempdb allocation and version store |
 | Recovery | backup chain, restore planning, progress, orphan detection, permission validation |
+| Clean DEV refresh | snapshot DEV security externally, restore PROD data, remove PROD principals/grants, replay and validate DEV security |
 | HA/DR | AG replica/database state, queues, rates, RPO/RTO indicators, cluster notes |
 | Integrity | suspect pages, CHECKDB history, corruption evidence and safe response order |
 | Security | principals, role membership, explicit permissions, orphaned users, impersonation |
