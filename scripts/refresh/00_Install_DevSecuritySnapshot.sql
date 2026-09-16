@@ -538,11 +538,11 @@ BEGIN TRY
    SELECT name,type,authentication_type
    FROM sys.database_principals WHERE principal_id>4 AND is_fixed_role=0
    EXCEPT
-   SELECT principal_name,principal_type,authentication_type
+   SELECT principal_name COLLATE DATABASE_DEFAULT,principal_type COLLATE DATABASE_DEFAULT,authentication_type
    FROM DBA_Admin.dbo.DevSecuritySnapshotPrincipal WHERE snapshot_id=@SnapshotId
  ) OR EXISTS
  (
-   SELECT principal_name,principal_type,authentication_type
+   SELECT principal_name COLLATE DATABASE_DEFAULT,principal_type COLLATE DATABASE_DEFAULT,authentication_type
    FROM DBA_Admin.dbo.DevSecuritySnapshotPrincipal WHERE snapshot_id=@SnapshotId
    EXCEPT
    SELECT name,type,authentication_type
