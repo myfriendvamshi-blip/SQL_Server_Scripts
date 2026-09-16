@@ -41,6 +41,6 @@ refresh engine in its new modules and does not certify that engine safe for real
 - Test unsupported identities, keys, missing objects, grant chains, EXECUTE AS and
   interrupted restore/apply. Execute the actual operator template in isolation.
 
-These are outstanding hardening items. No destructive refresh code was altered here;
-existing work is preserved. The issue's checked refresh checkbox is not evidence that
+These are outstanding hardening items. Only warning comments/documentation were changed;
+destructive refresh behavior is unchanged. The issue's checked refresh checkbox is not evidence that
 these findings have been resolved.

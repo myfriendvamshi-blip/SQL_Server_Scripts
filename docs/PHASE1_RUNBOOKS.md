@@ -174,6 +174,11 @@ parser. Audit emission/collection, signed modules and nested role paths remain u
 
 Reviewed 2026-09-16. Follow linked primary documentation; no source code is copied.
 
+The guard suite also checks eight expected-error paths: two opt-out gates, two existing
+fixture collisions (including preserving a sentinel row), and four limited-login metadata
+denials. It checks the exact SQL error number so an unrelated connection failure cannot
+be reported as a successful guard. These checks still do not attest a real environment.
+
 - Microsoft: [orphaned users](https://learn.microsoft.com/en-us/sql/sql-server/failover-clusters/troubleshoot-orphaned-users-sql-server),
   [18456](https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/mssqlserver-18456-database-engine-error),
   [backupset](https://learn.microsoft.com/en-us/sql/relational-databases/system-tables/backupset-transact-sql),
@@ -188,7 +193,11 @@ Reviewed 2026-09-16. Follow linked primary documentation; no source code is copi
   unlike our read-only classification. Its reviewed implementation selects eligible
   same-name logins; our lab includes a differently named alias to test SID-based
   evidence rather than automatic name-based repair. Review parameters and identities before use.
-  dbatools is MIT-licensed; preserve notices if code is ever incorporated. Pin and review
+  Reviewed source: [Repair-DbaDbOrphanUser](https://github.com/dataplat/dbatools/blob/development/public/Repair-DbaDbOrphanUser.ps1)
+  (blob `ad200f185c4ee6a833b167aabfa2020e9a3d167d`) and
+  [Test-DbaLastBackup](https://github.com/dataplat/dbatools/blob/development/public/Test-DbaLastBackup.ps1)
+  (blob `c1b85526d7756de597e52f9714e4f2f7090517aa`).
+  dbatools is [MIT-licensed](https://github.com/dataplat/dbatools/blob/development/license); preserve notices if code is ever incorporated. Pin and review
   a release/commit before installing; no external tools are installed by this increment.
 - [Ola Hallengren](https://github.com/olahallengren/sql-server-maintenance-solution)
   provides mature backup/integrity scheduling and logging, not incident attribution.

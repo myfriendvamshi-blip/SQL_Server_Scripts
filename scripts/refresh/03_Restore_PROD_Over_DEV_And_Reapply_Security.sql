@@ -7,7 +7,10 @@
   - DEV application connections and jobs are stopped.
   - DataPath and LogPath exist and include a trailing slash/backslash.
 
-  Failure behavior: if security replay or validation fails, the target remains SINGLE_USER.
+  EXPERIMENTAL DESTRUCTIVE TEMPLATE: see docs/REFRESH_SAFETY_REVIEW.md.
+  SINGLE_USER is not an access-control boundary. Keep the destination externally isolated.
+  Replay failure intends to leave SINGLE_USER, but failures outside apply can differ;
+  CHECKDB below runs AFTER apply returns MULTI_USER. Not production certified.
 */
 :setvar DevDatabase "CHANGE_ME_DEV_DATABASE"
 :setvar SnapshotId "00000000-0000-0000-0000-000000000000"

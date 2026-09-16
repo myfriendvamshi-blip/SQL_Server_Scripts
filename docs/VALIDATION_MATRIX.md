@@ -48,6 +48,7 @@ and SQL build. It does not publish a SQL port or accept an external SQL endpoint
 | `scripts/scenarios/05_Security_Evidence.sql` | Lab 07 executes queries; asserts object deny, column grant and effective permission | Empty Audit configuration path only; not forensic event attribution or full drift engine |
 | `lab/07_Phase1_Evidence.sql` | Disposable fixtures, assertions, SID remap, CHECKDB, cleanup | Mutation permitted in isolated CI only |
 | `lab/08_Phase1_PITR.sql` | Full + differential + log, actual STOPAT restore, row inclusion/exclusion and CHECKDB | Positive single-file FULL-recovery case only |
+| `tests/phase1_guards.sh` | Two opt-out errors, two fixture-collision errors, four metadata-denial errors; exact error numbers asserted | Eight refusal tests, not environment authentication; local bash syntax check only |
 
 The pre-existing 10 core SQL collectors are executed by the unchanged suite. Five
 specialized SQL collectors and three refresh operator templates are **PARSED ONLY**;

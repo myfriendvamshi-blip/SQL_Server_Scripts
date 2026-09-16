@@ -7,7 +7,9 @@
   - Unsupported identity types fail capture instead of being silently omitted.
   - Apply removes restored explicit permissions, memberships, users and custom roles
     before replaying the DEV snapshot in one transaction.
-  - The target stays SINGLE_USER if replay or validation fails.
+  - Replay failure intends to leave SINGLE_USER; that is NOT an access-control boundary.
+  - EXPERIMENTAL: counts do not prove exact security equivalence. Keep external isolation.
+    See docs/REFRESH_SAFETY_REVIEW.md before use; this is not production certified.
 */
 USE master;
 SET NOCOUNT ON;
@@ -596,7 +598,7 @@ END CATCH;';
       UPDATE dbo.DevSecuritySnapshot
       SET status=N'FAILED',applied_database=@DatabaseName,error_message=LEFT(ERROR_MESSAGE(),2048)
       WHERE snapshot_id=@SnapshotId;
-      /* Deliberately leave the target SINGLE_USER so imported PROD access cannot be used. */
+      /* Leave SINGLE_USER, but only external isolation prevents other clients taking the slot. */
       THROW;
     END CATCH;
 
