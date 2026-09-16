@@ -235,7 +235,7 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
         rsb.name AS remote_binding_name,r.name AS route_name,fc.name AS fulltext_catalog_name,
         sk.name AS symmetric_key_name,cert.name AS certificate_name,ak.name AS asymmetric_key_name,
         fsl.name AS stoplist_name,spl.name AS property_list_name,dsc.name AS credential_name,
-        el.name AS external_language_name
+        el.language AS external_language_name
  FROM sys.database_permissions AS p
  JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
  JOIN sys.database_principals AS grantor ON grantor.principal_id=p.grantor_principal_id
@@ -387,7 +387,7 @@ BEGIN TRY
          rsb.name AS remote_binding_name,r.name AS route_name,fc.name AS fulltext_catalog_name,
          sk.name AS symmetric_key_name,cert.name AS certificate_name,ak.name AS asymmetric_key_name,
          fsl.name AS stoplist_name,spl.name AS property_list_name,dsc.name AS credential_name,
-         el.name AS external_language_name
+         el.language AS external_language_name
   FROM sys.database_permissions AS p
   JOIN sys.database_principals AS grantee ON grantee.principal_id=p.grantee_principal_id
   LEFT JOIN sys.database_principals AS targetp ON p.class=4 AND targetp.principal_id=p.major_id
