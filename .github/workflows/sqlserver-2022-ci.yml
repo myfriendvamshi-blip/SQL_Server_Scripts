@@ -13,16 +13,20 @@ jobs:
   sqlserver-2022:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      SA_PASSWORD: "Toolkit_CI!2026_Strong"
     steps:
       - uses: actions/checkout@v4
+      - name: Create disposable masked credential
+        run: |
+          password="Toolkit_CI!${GITHUB_RUN_ID}Strong"
+          echo "::add-mask::$password"
+          echo "SA_PASSWORD=$password" >> "$GITHUB_ENV"
       - name: Start SQL Server 2022 Developer
         run: |
           docker run -d --name sql2022 \
             -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
             -p 1433:1433 -v sqlbackup:/var/opt/mssql/backup \
             mcr.microsoft.com/mssql/server:2022-latest
+          docker exec -u 0 sql2022 chown -R mssql:mssql /var/opt/mssql/backup
           for i in {1..60}; do
             if docker exec sql2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" -b; then exit 0; fi
             sleep 2
