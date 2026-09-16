@@ -30,7 +30,7 @@ DENY UPDATE ON dbo.Payload TO AliasDifferentFromLogin;
 GRANT UPDATE ON dbo.Payload(secret_value) TO AliasDifferentFromLogin;
 CREATE SYNONYM dbo.RemoteFixture FOR [MissingServer].[MissingDatabase].[dbo].[MissingTable];
 GO
-CREATE VIEW dbo.CrossDatabaseFixture AS SELECT name FROM master.sys.databases;
+CREATE VIEW dbo.CrossDatabaseFixture AS SELECT AccountId FROM DBA_Toolkit_Lab.dbo.Account;
 GO
 :r scripts/scenarios/01_Access.sql
 IF (SELECT COUNT(*) FROM #AccessEvidence WHERE finding=N'ORPHAN_CANDIDATE')<>1
@@ -45,7 +45,7 @@ IF NOT EXISTS(SELECT 1 FROM #AccessEvidence WHERE user_name=N'NoLoginIdentity' A
  THROW 51506,'WITHOUT LOGIN user misclassified.',1;
 GO
 :r scripts/scenarios/03_Restore_Dependencies.sql
-IF NOT EXISTS(SELECT 1 FROM #DependencyEvidence WHERE referencing_object=N'CrossDatabaseFixture' AND referenced_database_name=N'master')
+IF NOT EXISTS(SELECT 1 FROM #DependencyEvidence WHERE referencing_object=N'CrossDatabaseFixture' AND referenced_database_name=N'DBA_Toolkit_Lab')
  THROW 51507,'Cross-database dependency not captured.',1;
 GO
 :r scripts/scenarios/04_Integrity_Evidence.sql

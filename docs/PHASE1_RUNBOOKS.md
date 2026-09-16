@@ -118,7 +118,7 @@ No automatic production restore planner is delivered in this increment.
 2. Compare with an approved destination inventory. Logins, server grants, Agent objects,
    linked servers and key material are not supplied by a user-database restore.
    A matching certificate name is insufficient: confirm thumbprint and usable private key.
-3. Dynamic SQL, connection strings, SSIS packages, external schedulers and cross-database
+3. System-object references, dynamic SQL, connection strings, SSIS packages, external schedulers and cross-database
    references hidden in modules may escape dependency metadata. Job commands are
    deliberately omitted because they can contain secrets; steps with another database
    context may still reference the target. This is a lead list, not completeness proof.
@@ -185,7 +185,9 @@ Reviewed 2026-09-16. Follow linked primary documentation; no source code is copi
   restore and CHECKDB; our inventory cannot replace it. Explicitly supply a disposable
   destination when evaluating it: its documented default can use the source instance.
   [Repair-DbaDbOrphanUser](https://dbatools.io/Repair-DbaDbOrphanUser/) is remediation,
-  unlike our read-only classification. Review parameters and identities before use.
+  unlike our read-only classification. Its reviewed implementation selects eligible
+  same-name logins; our lab includes a differently named alias to test SID-based
+  evidence rather than automatic name-based repair. Review parameters and identities before use.
   dbatools is MIT-licensed; preserve notices if code is ever incorporated. Pin and review
   a release/commit before installing; no external tools are installed by this increment.
 - [Ola Hallengren](https://github.com/olahallengren/sql-server-maintenance-solution)
