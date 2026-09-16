@@ -262,9 +262,8 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
  LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
  LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
  LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
-), PermissionClause AS
-(
- SELECT *,
+)
+SELECT *,
    CASE class
     WHEN 0 THEN N''''
     WHEN 1 THEN N'' ON OBJECT::''+QUOTENAME(object_schema_name)+N''.''+QUOTENAME(object_name)
@@ -288,8 +287,21 @@ JOIN sys.database_principals AS memberp ON memberp.principal_id=rm.member_princi
     WHEN 32 THEN N'' ON DATABASE SCOPED CREDENTIAL::''+QUOTENAME(credential_name)
     WHEN 34 THEN N'' ON EXTERNAL LANGUAGE::''+QUOTENAME(external_language_name)
    END AS securable_clause
- FROM PermissionSource
+INTO #CapturedPermissions
+FROM PermissionSource;
+
+IF EXISTS
+(
+ SELECT 1 FROM #CapturedPermissions
+ WHERE securable_clause IS NULL OR grantee_name IS NULL OR grantor_name IS NULL
 )
+BEGIN
+ SELECT class,class_desc,major_id,minor_id,permission_name,grantee_name,grantor_name
+ FROM #CapturedPermissions
+ WHERE securable_clause IS NULL OR grantee_name IS NULL OR grantor_name IS NULL;
+ THROW 51009,''A DEV permission securable or principal could not be resolved; capture stopped.'',1;
+END;
+
 INSERT DBA_Admin.dbo.DevSecuritySnapshotCommand
  (snapshot_id,command_order,command_type,principal_name,command_text)
 SELECT @SnapshotId,
@@ -302,7 +314,8 @@ SELECT @SnapshotId,
              +CASE WHEN state=''W'' THEN N'' WITH GRANT OPTION'' ELSE N'''' END
              +N'' AS ''+QUOTENAME(grantor_name)+N'';''
        END
-FROM PermissionClause;
+FROM #CapturedPermissions;
+DROP TABLE #CapturedPermissions;
 
 SELECT @PrincipalCountOut=COUNT(*)
 FROM sys.database_principals WHERE principal_id>4 AND is_fixed_role=0;
@@ -413,9 +426,8 @@ BEGIN TRY
   LEFT JOIN sys.registered_search_property_lists AS spl ON p.class=31 AND spl.property_list_id=p.major_id
   LEFT JOIN sys.database_scoped_credentials AS dsc ON p.class=32 AND dsc.credential_id=p.major_id
   LEFT JOIN sys.external_languages AS el ON p.class=34 AND el.external_language_id=p.major_id
- ), PermissionClause AS
- (
-  SELECT *,CASE class
+ )
+ SELECT *,CASE class
     WHEN 0 THEN N''''
     WHEN 1 THEN N'' ON OBJECT::''+QUOTENAME(object_schema_name)+N''.''+QUOTENAME(object_name)
                     +CASE WHEN minor_id=0 THEN N'''' ELSE N'' (''+QUOTENAME(column_name)+N'')'' END
@@ -438,12 +450,21 @@ BEGIN TRY
     WHEN 32 THEN N'' ON DATABASE SCOPED CREDENTIAL::''+QUOTENAME(credential_name)
     WHEN 34 THEN N'' ON EXTERNAL LANGUAGE::''+QUOTENAME(external_language_name)
    END AS securable_clause
-  FROM PermissionSource
+ INTO #RestoredPermissions
+ FROM PermissionSource;
+
+ IF EXISTS
+ (
+   SELECT 1 FROM #RestoredPermissions
+   WHERE securable_clause IS NULL OR grantee_name IS NULL
  )
+   THROW 51109, ''A restored PROD permission securable or grantee could not be resolved; database remains isolated.'', 1;
+
  INSERT #Work(command_text)
  SELECT TOP (2147483647) N''REVOKE ''+permission_name+securable_clause+N'' FROM ''+QUOTENAME(grantee_name)+N'' CASCADE;''
- FROM PermissionClause
+ FROM #RestoredPermissions
  ORDER BY CASE WHEN minor_id>0 THEN 0 ELSE 1 END,class,major_id,minor_id DESC;
+ DROP TABLE #RestoredPermissions;
 
  DECLARE @Command nvarchar(max);
  DECLARE permission_cursor CURSOR LOCAL FAST_FORWARD FOR SELECT command_text FROM #Work ORDER BY work_order;
