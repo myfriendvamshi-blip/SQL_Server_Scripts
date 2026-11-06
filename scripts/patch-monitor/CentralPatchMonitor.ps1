@@ -102,6 +102,7 @@ function Get-ServiceState([string]$server,[string]$name) {
  } catch {return 'Unknown'}
 }
 function Notify([guid]$incident,[string]$server,[string]$type,[string]$subject,[string]$html) {
+ if($SuppressEmail){Write-Output "EMAIL SUPPRESSED: $subject";return}
  $x=Invoke-Db $CentralSqlInstance $CentralDatabase @'
 SELECT COUNT(*) Cnt FROM dbo.ServerPatchNotificationLog WHERE IncidentId=@Id AND NotificationType=@Type;
 '@ @{Id=$incident;Type=$type}
