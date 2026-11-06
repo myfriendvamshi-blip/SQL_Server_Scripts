@@ -6,7 +6,7 @@ param(
  [string]$MailFrom='sql-patch-monitor@yourdomain.com',
  [string[]]$MailTo=@('dba-team@yourdomain.com'),
  [string]$SmtpCredentialFile='C:\SQLAgent\Secrets\PatchMonitorSmtpPassword.txt',
- [int]$LookbackHours=48,[int]$EscalationHours=4,[int]$DiskWarningPercentFree=10,
+ [int]$LookbackHours=48,[int]$EscalationHours=4,
  [switch]$SuppressEmail
 )
 Set-StrictMode -Version Latest
@@ -144,6 +144,10 @@ SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.ServerPatchEventLedger WHERE EventHash
 SELECT TOP(1) IncidentId FROM dbo.ServerPatchMonitorState WHERE ServerName=@Server AND RecoveryStatus<>'Recovered';
 '@ @{Hash=$hash;Server=$server;LogName=[string]$e.LogName;EventID=$id;TimeCreated=[datetime]$e.TimeCreated;Message=$msg;Category=[string]$e.StatusCategory;Type=$type}
   if([int]$result.Tables[0].Rows[0].IsNew -eq 0){continue}
+  if($result.Tables[1].Rows.Count -eq 0 -and $type -notin @('UnexpectedRestart','UpdateFailed','SqlStopped','AgentStopped')) {
+   Invoke-Db $CentralSqlInstance $CentralDatabase "UPDATE dbo.ServerPatchEventLedger SET ProcessedAt=SYSUTCDATETIME() WHERE EventHash=@Hash;" @{Hash=$hash} -NonQuery
+   continue
+  }
   if($result.Tables[1].Rows.Count -eq 0) {
    Invoke-Db $CentralSqlInstance $CentralDatabase @'
 IF EXISTS(SELECT 1 FROM dbo.ServerPatchMonitorState WHERE ServerName=@Server)
