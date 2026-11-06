@@ -7,7 +7,7 @@ param(
  [string[]]$MailTo=@('dba-team@yourdomain.com'),
  [string]$SmtpCredentialFile='C:\SQLAgent\Secrets\PatchMonitorSmtpPassword.txt',
  [int]$LookbackHours=48,[int]$EscalationHours=4,[int]$DiskWarningPercentFree=10,
- [switch]$WhatIf
+ [switch]$SuppressEmail
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -46,7 +46,7 @@ function Invoke-DbMulti([string]$server,[string]$db,[string]$sql,[hashtable]$p=@
  } finally {if($cn.State -ne 'Closed'){$cn.Close()};$cn.Dispose()}
 }
 function Send-Mail([string]$subject,[string]$html) {
- if($WhatIf){Write-Output "WHATIF mail: $subject";return}
+ if($SuppressEmail){Write-Output "EMAIL SUPPRESSED: $subject";return}
  if(!(Test-Path -LiteralPath $SmtpCredentialFile)){throw "SMTP credential file missing: $SmtpCredentialFile"}
  $secure=Get-Content -LiteralPath $SmtpCredentialFile -Raw | ConvertTo-SecureString
  $cred=New-Object System.Management.Automation.PSCredential($MailFrom,$secure)
@@ -176,11 +176,11 @@ UPDATE dbo.ServerPatchMonitorState SET LastEventTime=@When,EventSummary=@Type,
  RebootDetected=CASE WHEN @Type='UnexpectedRestart' THEN 1 ELSE RebootDetected END,
  FirstFailureTime=CASE WHEN FirstFailureTime IS NULL AND @Failure=1 THEN SYSUTCDATETIME() ELSE FirstFailureTime END,
  LastUpdated=SYSUTCDATETIME() WHERE ServerName=@Server AND IncidentId=@Incident;
-UPDATE dbo.ServerPatchEventLedger SET ProcessedAt=SYSUTCDATETIME() WHERE EventHash=@Hash;
 '@ @{When=[datetime]$e.TimeCreated;Type=$type;EventID=$id;Failure=($type -in @('UpdateFailed','SqlStopped','AgentStopped','UnexpectedRestart'));Server=$server;Incident=$incident;Hash=$hash} -NonQuery
   if($type -in @('UpdateFailed','SqlStopped','AgentStopped','UnexpectedRestart')) {
    Notify $incident $server 'Failure' "PATCH FAILURE: $server - $type" "<html><body><h2>$type</h2><p>$server</p><p>$msg</p></body></html>"
   }
+  Invoke-Db $CentralSqlInstance $CentralDatabase "UPDATE dbo.ServerPatchEventLedger SET ProcessedAt=SYSUTCDATETIME() WHERE EventHash=@Hash;" @{Hash=$hash} -NonQuery
  }
 
  $active=Invoke-Db $CentralSqlInstance $CentralDatabase "SELECT ServerName,IncidentId,FirstFailureTime FROM dbo.ServerPatchMonitorState WHERE RecoveryStatus<>'Recovered';"
@@ -205,13 +205,14 @@ UPDATE dbo.ServerPatchMonitorState SET SQLServiceStatus=@SQL,AgentServiceStatus=
  LastCheckedTime=SYSUTCDATETIME(),LastUpdated=SYSUTCDATETIME()
 WHERE ServerName=@Server AND IncidentId=@Incident;
 '@ @{SQL=$sql;Agent=$agent;SSIS=$ssis;SSRS=$ssrs;OK=$ok;Escalate=$escalate;Server=$server;Incident=[guid]$r.IncidentId} -NonQuery
-  if($escalate) {
-   Notify ([guid]$r.IncidentId) $server 'ManualAttention' "MANUAL ATTENTION: $server" "<html><body><h2>Manual attention required</h2><p>$server SQL=$sql Agent=$agent</p></body></html>"
-  }
   if($ok) {
    $html="<html><body><h2>Recovered: $server</h2><p>SQL=$sql; Agent=$agent; SSIS=$ssis; SSRS=$ssrs</p><p>Service recovery does not certify database/job health.</p></body></html>"
    Notify ([guid]$r.IncidentId) $server 'Recovery' "PATCH RECOVERED: $server" $html
   }
+  if($escalate) {
+   Notify ([guid]$r.IncidentId) $server 'ManualAttention' "MANUAL ATTENTION: $server" "<html><body><h2>Manual attention required</h2><p>$server SQL=$sql Agent=$agent</p></body></html>"
+  }
+
  }
 } finally {
  if($lock.State -ne 'Closed') {
