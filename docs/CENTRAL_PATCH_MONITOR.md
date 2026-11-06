@@ -39,7 +39,7 @@ and SQL Agent are Running; absent SSIS/SSRS services are NotConfigured and do no
    Read-Host -AsSecureString | ConvertFrom-SecureString | Set-Content C:\SQLAgent\Secrets\PatchMonitorSmtpPassword.txt
 4. Grant the Agent identity SQL read/write permissions to the monitor objects and read access
    to source tables. Grant remote CIM/WinRM query permissions on each monitored server.
-5. Run with -WhatIf, then test on a non-production host before enabling the 15-minute schedule.
+5. Use -SuppressEmail to exercise event/state processing without sending email. This is **not** a dry run: it still reads and writes monitor tables. Test on a non-production database/server before enabling the 15-minute schedule.
 6. Use PowerShell subsystem, not CmdExec. Ensure the SQL Agent service identity can read the
    script and secret file.
 
