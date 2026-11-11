@@ -1,0 +1,42 @@
+CREATE EVENT SESSION [App_Trace] ON SERVER
+ADD EVENT sqlserver.rpc_completed (
+    ACTION (sqlserver.client_app_name, sqlserver.client_hostname,
+            sqlserver.server_principal_name, sqlserver.database_name,
+            sqlserver.session_id, sqlserver.sql_text)
+    WHERE sqlserver.client_app_name LIKE N'%MyApp%'),
+ADD EVENT sqlserver.sql_batch_completed (
+    ACTION (sqlserver.client_app_name, sqlserver.client_hostname,
+            sqlserver.server_principal_name, sqlserver.database_name,
+            sqlserver.session_id, sqlserver.sql_text)
+    WHERE sqlserver.client_app_name LIKE N'%MyApp%'),
+ADD EVENT sqlserver.sp_statement_completed (
+    ACTION (sqlserver.client_app_name, sqlserver.client_hostname,
+            sqlserver.server_principal_name, sqlserver.database_name,
+            sqlserver.session_id)
+    WHERE sqlserver.client_app_name LIKE N'%MyApp%')
+ADD TARGET package0.event_file (
+    SET filename = N'D:\XE\App_Trace.xel',
+        max_file_size = 100, max_rollover_files = 5)
+WITH (MAX_DISPATCH_LATENCY = 5 SECONDS);
+
+ALTER EVENT SESSION [App_Trace] ON SERVER STATE = START;
+
+
+SELECT
+  x.d.value('(@timestamp)[1]','datetime2')                          AS event_time,
+  x.d.value('(@name)[1]','varchar(50)')                             AS event_name,
+  x.d.value('(action[@name="server_principal_name"]/value)[1]','nvarchar(128)') AS login_name,
+  x.d.value('(action[@name="client_app_name"]/value)[1]','nvarchar(256)')       AS app_name,
+  x.d.value('(action[@name="client_hostname"]/value)[1]','nvarchar(128)')       AS host_name,
+  x.d.value('(action[@name="database_name"]/value)[1]','nvarchar(128)')         AS db_name,
+  x.d.value('(data[@name="object_name"]/value)[1]','nvarchar(256)') AS proc_name,
+  COALESCE(x.d.value('(data[@name="statement"]/value)[1]','nvarchar(max)'),
+           x.d.value('(data[@name="batch_text"]/value)[1]','nvarchar(max)')) AS statement_text
+FROM (SELECT CAST(event_data AS xml) AS ed
+      FROM sys.fn_xe_file_target_read_file(N'D:\XE\App_Trace*.xel',NULL,NULL,NULL)) t
+CROSS APPLY t.ed.nodes('/event') x(d)
+ORDER BY event_time;
+
+
+ALTER EVENT SESSION [App_Trace] ON SERVER STATE = STOP;
+DROP EVENT SESSION [App_Trace] ON SERVER;
