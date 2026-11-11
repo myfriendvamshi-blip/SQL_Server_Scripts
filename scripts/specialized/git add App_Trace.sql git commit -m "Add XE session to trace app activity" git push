@@ -1,3 +1,0 @@
-git add App_Trace.sql
-git commit -m "Add XE session to trace app activity"
-git push
