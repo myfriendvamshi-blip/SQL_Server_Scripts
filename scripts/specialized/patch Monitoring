@@ -1,0 +1,36 @@
+CREATE TABLE dbo.RestartEventMap (
+    LogName   NVARCHAR(200) NOT NULL,
+    EventId   INT           NOT NULL,
+    Category  NVARCHAR(20)  NOT NULL,
+    IsTrigger BIT           NOT NULL,
+    PRIMARY KEY (LogName, EventId)
+);
+
+INSERT INTO dbo.RestartEventMap (LogName, EventId, Category, IsTrigger) VALUES
+('System', 1074, 'Shutdown',   1),
+('System', 6006, 'Shutdown',   1),
+('System', 6008, 'Unexpected', 1),
+('System', 41,   'Unexpected', 1),
+('System', 6005, 'Boot',       0),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 43, 'PatchStart',   1),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 19, 'PatchSuccess', 1),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 20, 'PatchFail',    1);
+
+CREATE TABLE dbo.RestartIncident (
+    IncidentId           INT IDENTITY(1,1) PRIMARY KEY,
+    ServerName           NVARCHAR(128) NOT NULL,
+    TriggerTime          DATETIME      NOT NULL,
+    TriggerCategory      NVARCHAR(20)  NOT NULL,
+    TriggerEventId       INT           NOT NULL,
+    TriggerMessage       NVARCHAR(MAX) NULL,
+    DetectedAt           DATETIME      NOT NULL DEFAULT GETDATE(),
+    Status               NVARCHAR(20)  NOT NULL DEFAULT 'Open',   -- Open, Healthy, GaveUp
+    NotBackEmailSent     BIT           NOT NULL DEFAULT 0,
+    ServiceFailEmailSent BIT           NOT NULL DEFAULT 0,
+    LastCheckTime        DATETIME      NULL,
+    LastError            NVARCHAR(MAX) NULL,
+    ClosedAt             DATETIME      NULL
+);
+CREATE INDEX IX_RestartIncident_Server ON dbo.RestartIncident (ServerName, Status, TriggerTime);
+
+
