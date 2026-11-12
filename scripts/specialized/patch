@@ -1,0 +1,294 @@
+<#
+============================================================
+ Restart / Patch / Service Event Monitor
+ - Scans the central event table for shutdown, patch and
+   SQL / Agent / SSIS / SSRS service stop-start-fail events
+ - Opens one incident per server (related events are grouped)
+ - Checks the server rebooted (if it shut down) and SQL services are running
+ - Green email when healthy, red email when not, retries until 4-hour cap
+============================================================
+#>
+
+param(
+    [string]$CentralSqlInstance = "CENTRALSQL01",
+    [string]$CentralDatabase    = "DBAUtility",
+    [string]$EventTable         = "dbo.ServerEventLog",   # <-- your event log table
+    [int]$WindowMinutes         = 30,    # look-back for new trigger events
+    [int]$QuietMinutes          = 10,    # wait this long after the last event before checking
+    [int]$SettleMinutes         = 10,    # wait this long after boot before checking services
+    [int]$AlertAfterMinutes     = 30,    # "server not back" alert threshold
+    [int]$GiveUpMinutes         = 240,   # 4-hour cap
+    [bool]$SkipPatchScheduleServers = $true,  # PatchSchedule monitor already covers these
+    [string]$SmtpServer         = "smtp.yourcompany.com",
+    [int]$SmtpPort              = 25,
+    [bool]$SmtpEnableSsl        = $false,
+    [string]$SmtpUsername       = "smtp-username@yourcompany.com",
+    [string]$SmtpPasswordFile   = "C:\Scripts\smtp_password.txt",
+    [string]$From               = "sqlalerts@yourcompany.com",
+    [string]$To                 = "you@yourcompany.com"
+)
+
+Import-Module SqlServer -ErrorAction SilentlyContinue
+$PSDefaultParameterValues["Invoke-Sqlcmd:TrustServerCertificate"] = $true
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+function ConvertFrom-DBNull {
+    param($Value)
+    if ($null -eq $Value -or $Value -eq [DBNull]::Value) { return $null }
+    return $Value
+}
+
+function Color($ok) { if ($ok) { "green" } else { "red" } }
+
+function Send-Email {
+    param($Subject, $Body)
+    $securePassword = Get-Content $SmtpPasswordFile | ConvertTo-SecureString
+    $smtpCred = New-Object System.Management.Automation.PSCredential($SmtpUsername, $securePassword)
+
+    $mail = New-Object System.Net.Mail.MailMessage
+    $mail.From = $From
+    $mail.To.Add($To)
+    $mail.Subject = $Subject
+    $mail.Body = $Body
+    $mail.IsBodyHtml = $true
+
+    $smtp = New-Object System.Net.Mail.SmtpClient($SmtpServer, $SmtpPort)
+    $smtp.EnableSsl = $SmtpEnableSsl
+    $smtp.Credentials = $smtpCred.GetNetworkCredential()
+    try { $smtp.Send($mail) }
+    catch { Write-Warning "Failed to send email '$Subject': $($_.Exception.Message)" }
+}
+
+# SQL engine, Agent, Integration Services, Reporting Services (default + named instances)
+function Get-SqlServiceStatus {
+    param($ComputerName)
+    Get-CimInstance -ComputerName $ComputerName -ClassName Win32_Service -ErrorAction Stop |
+        Where-Object { $_.Name -match '^(MSSQLSERVER|MSSQL\$.+|SQLSERVERAGENT|SQLAgent\$.+|MsDtsServer\d*|ReportServer(\$.+)?|SQLServerReportingServices|PowerBIReportServer)$' } |
+        Select-Object Name, State, StartMode, StartName
+}
+
+# All mapped events for this server since the incident started (timeline for the email)
+function Get-IncidentEvents {
+    param($Server, $TriggerTime)
+    $t = $TriggerTime.ToString('yyyy-MM-ddTHH:mm:ss')
+    $q = @"
+SELECT DISTINCT TOP 40 e.TimeCreated, m.Category, e.EventId, LEFT(e.Message, 160) AS Message
+FROM $EventTable e
+JOIN dbo.RestartEventMap m
+  ON m.LogName = e.LogName AND m.EventId = e.EventId
+ AND (m.MessagePattern IS NULL OR e.Message LIKE m.MessagePattern)
+WHERE e.ServerName = '$Server' AND e.TimeCreated >= '$t'
+ORDER BY TimeCreated
+"@
+    @(Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query $q)
+}
+
+function New-IncidentHtml {
+    param($Server, $Inc, $BootTime, $LastShutdown, $Services, $Events, $StatusText, $Problem, $Recovered)
+
+    $ok = ($StatusText -eq 'OK')
+    $bannerText = switch ($StatusText) {
+        'OK'        { if ($Recovered) { "RECOVERED - $Server is back and SQL services are running" } else { "ALL OK - $Server SQL services are running" } }
+        'ATTENTION' { "ATTENTION NEEDED - $Server" }
+        default     { "MANUAL ATTENTION NEEDED - $Server still not healthy after $([math]::Round($GiveUpMinutes/60,0)) hours" }
+    }
+
+    $downtime = "n/a"
+    if ($BootTime -and $LastShutdown -and ($BootTime -gt $LastShutdown)) {
+        $downtime = "$([math]::Round(($BootTime - $LastShutdown).TotalMinutes,1)) min (shutdown logged to boot)"
+    }
+
+    $html  = "<h1 style='color:$(Color $ok)'>$bannerText</h1>"
+    $html += "<table border='1' cellpadding='4' style='border-collapse:collapse'>"
+    $html += "<tr><td><b>Server</b></td><td>$Server</td></tr>"
+    $html += "<tr><td><b>First trigger</b></td><td>$($Inc.TriggerCategory) (Event $($Inc.TriggerEventId)) at $($Inc.TriggerTime)</td></tr>"
+    $html += "<tr><td><b>Server boot time</b></td><td>$(if($BootTime){$BootTime}else{'Unknown / unreachable'})</td></tr>"
+    $html += "<tr><td><b>Downtime</b></td><td>$downtime</td></tr>"
+    $html += "<tr><td><b>Report generated</b></td><td>$(Get-Date)</td></tr></table>"
+
+    if ($Problem) { $html += "<h3 style='color:red'>Issue: $([System.Net.WebUtility]::HtmlEncode($Problem))</h3>" }
+
+    if ($Services -and @($Services).Count -gt 0) {
+        $html += "<h3>SQL / SSIS / SSRS Services</h3><table border='1' cellpadding='4' style='border-collapse:collapse'>"
+        $html += "<tr><th>Service</th><th>Status</th><th>Start Mode</th><th>Run As Account</th></tr>"
+        foreach ($s in $Services) {
+            $up = ($s.State -eq 'Running') -or ($s.StartMode -ne 'Auto')
+            $html += "<tr><td>$($s.Name)</td><td style='color:$(Color $up)'>$($s.State)</td><td>$($s.StartMode)</td><td>$($s.StartName)</td></tr>"
+        }
+        $html += "</table>"
+    }
+
+    if ($Events -and @($Events).Count -gt 0) {
+        $html += "<h3>Event Timeline</h3><table border='1' cellpadding='4' style='border-collapse:collapse'>"
+        $html += "<tr><th>Time</th><th>Type</th><th>Event</th><th>Message</th></tr>"
+        foreach ($e in $Events) {
+            $bad = $e.Category -in @('ServiceStop','ServiceFail','Unexpected','PatchFail')
+            $m = [System.Net.WebUtility]::HtmlEncode([string]$e.Message)
+            $html += "<tr><td>$($e.TimeCreated)</td><td style='color:$(Color (-not $bad))'>$($e.Category)</td><td>$($e.EventId)</td><td>$m</td></tr>"
+        }
+        $html += "</table>"
+    }
+    return $html
+}
+
+# ============================================================
+# STEP 1 - Detect new trigger events and open incidents
+# ============================================================
+$skipClause = ""
+if ($SkipPatchScheduleServers) {
+    $skipClause = "AND NOT EXISTS (SELECT 1 FROM dbo.PatchSchedule p WHERE p.ServerName = e.ServerName AND p.PatchDate BETWEEN CAST(DATEADD(DAY,-1,GETDATE()) AS DATE) AND CAST(GETDATE() AS DATE))"
+}
+
+$detectQuery = @"
+;WITH Ev AS (
+    SELECT e.ServerName, e.TimeCreated, e.EventId, m.Category, e.Message
+    FROM $EventTable e
+    JOIN dbo.RestartEventMap m
+      ON m.LogName = e.LogName AND m.EventId = e.EventId
+     AND (m.MessagePattern IS NULL OR e.Message LIKE m.MessagePattern)
+    WHERE m.IsTrigger = 1
+      AND e.TimeCreated >= DATEADD(MINUTE, -$WindowMinutes, GETDATE())
+      AND NOT EXISTS (
+            SELECT 1 FROM dbo.RestartIncident i
+            WHERE i.ServerName = e.ServerName
+              AND e.TimeCreated >= DATEADD(MINUTE, -60, i.TriggerTime)
+              AND (i.Status = 'Open' OR e.TimeCreated <= i.ClosedAt))
+      $skipClause
+),
+F AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY ServerName ORDER BY TimeCreated) AS rn
+    FROM Ev
+)
+INSERT INTO dbo.RestartIncident (ServerName, TriggerTime, TriggerCategory, TriggerEventId, TriggerMessage)
+SELECT ServerName, TimeCreated, Category, EventId, Message
+FROM F
+WHERE rn = 1
+"@
+Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query $detectQuery
+
+# ============================================================
+# STEP 2 - Evaluate every open incident
+# ============================================================
+$openQuery = @"
+SELECT i.IncidentId, i.ServerName, i.TriggerTime, i.TriggerCategory, i.TriggerEventId, i.TriggerMessage,
+       i.NotBackEmailSent, i.ServiceFailEmailSent,
+       (SELECT MAX(e.TimeCreated)
+          FROM $EventTable e
+          JOIN dbo.RestartEventMap m ON m.LogName = e.LogName AND m.EventId = e.EventId
+           AND (m.MessagePattern IS NULL OR e.Message LIKE m.MessagePattern)
+         WHERE e.ServerName = i.ServerName AND e.TimeCreated >= i.TriggerTime AND m.IsTrigger = 1) AS LastEventTime,
+       (SELECT MAX(e.TimeCreated)
+          FROM $EventTable e
+          JOIN dbo.RestartEventMap m ON m.LogName = e.LogName AND m.EventId = e.EventId
+         WHERE e.ServerName = i.ServerName AND e.TimeCreated >= i.TriggerTime
+           AND m.Category IN ('Shutdown','Unexpected')) AS LastShutdownTime
+FROM dbo.RestartIncident i
+WHERE i.Status = 'Open'
+"@
+$openIncidents = Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query $openQuery
+
+foreach ($inc in $openIncidents) {
+
+    $now         = Get-Date
+    $server      = $inc.ServerName
+    $elapsed     = ($now - $inc.TriggerTime).TotalMinutes
+    $lastEvent   = ConvertFrom-DBNull $inc.LastEventTime
+    $lastShut    = ConvertFrom-DBNull $inc.LastShutdownTime
+    $notBackSent = [bool](ConvertFrom-DBNull $inc.NotBackEmailSent)
+    $failSent    = [bool](ConvertFrom-DBNull $inc.ServiceFailEmailSent)
+
+    # More events may still be arriving - wait until things are quiet
+    if ($lastEvent -and (($now - $lastEvent).TotalMinutes -lt $QuietMinutes)) { continue }
+
+    # ---- Live check ----
+    $bootTime = $null
+    $reachErr = $null
+    try {
+        $bootTime = (Get-CimInstance -ComputerName $server -ClassName Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+    } catch { $reachErr = $_.Exception.Message }
+
+    $problem = $null
+    $kind    = $null
+    $svcRows = @()
+
+    if (-not $bootTime) {
+        $problem = "Server not reachable via CIM/WMI: $reachErr"
+        $kind = 'NotBack'
+    }
+    elseif ($lastShut -and ($bootTime -le $lastShut)) {
+        $problem = "A shutdown/restart was logged at $lastShut but no new boot has been detected (current boot time: $bootTime)."
+        $kind = 'NotBack'
+    }
+    elseif ($lastShut -and (($now - $bootTime).TotalMinutes -lt $SettleMinutes)) {
+        continue   # just booted, let services settle
+    }
+    else {
+        try { $svcRows = @(Get-SqlServiceStatus -ComputerName $server) }
+        catch { $problem = "Could not query services: $($_.Exception.Message)"; $kind = 'Services' }
+
+        if (-not $problem) {
+            $bad = @($svcRows | Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' })
+            if ($bad.Count -gt 0) {
+                $problem = "Not running: " + (($bad | ForEach-Object { $_.Name }) -join ', ')
+                $kind = 'Services'
+            }
+        }
+    }
+
+    # ---- Healthy ----
+    if (-not $problem) {
+        $recovered = ($notBackSent -or $failSent)
+        $html = New-IncidentHtml -Server $server -Inc $inc -BootTime $bootTime -LastShutdown $lastShut `
+                    -Services $svcRows -Events (Get-IncidentEvents -Server $server -TriggerTime $inc.TriggerTime) `
+                    -StatusText 'OK' -Problem $null -Recovered $recovered
+        $tag = if ($recovered) { "RECOVERED" } else { "OK" }
+        Send-Email -Subject "Restart/Service Check - $server - $tag - $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Body $html
+
+        Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query @"
+UPDATE dbo.RestartIncident
+SET Status = 'Healthy', ClosedAt = GETDATE(), LastCheckTime = GETDATE(), LastError = NULL
+WHERE IncidentId = $($inc.IncidentId)
+"@
+        continue
+    }
+
+    # ---- Not healthy yet ----
+    $errEsc = $problem -replace "'", "''"
+    Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query @"
+UPDATE dbo.RestartIncident SET LastCheckTime = GETDATE(), LastError = '$errEsc'
+WHERE IncidentId = $($inc.IncidentId)
+"@
+
+    # 4-hour cap - one final email, stop retrying
+    if ($elapsed -ge $GiveUpMinutes) {
+        $html = New-IncidentHtml -Server $server -Inc $inc -BootTime $bootTime -LastShutdown $lastShut `
+                    -Services $svcRows -Events (Get-IncidentEvents -Server $server -TriggerTime $inc.TriggerTime) `
+                    -StatusText 'GAVEUP' -Problem $problem -Recovered $false
+        Send-Email -Subject "MANUAL ATTENTION NEEDED - $server - $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Body $html
+
+        Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query @"
+UPDATE dbo.RestartIncident SET Status = 'GaveUp', ClosedAt = GETDATE()
+WHERE IncidentId = $($inc.IncidentId)
+"@
+        continue
+    }
+
+    # Server not back - one red email after the alert threshold
+    if ($kind -eq 'NotBack' -and $elapsed -ge $AlertAfterMinutes -and -not $notBackSent) {
+        $html = New-IncidentHtml -Server $server -Inc $inc -BootTime $bootTime -LastShutdown $lastShut `
+                    -Services $svcRows -Events (Get-IncidentEvents -Server $server -TriggerTime $inc.TriggerTime) `
+                    -StatusText 'ATTENTION' -Problem $problem -Recovered $false
+        Send-Email -Subject "ATTENTION - $server not back online - $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Body $html
+        Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query "UPDATE dbo.RestartIncident SET NotBackEmailSent = 1 WHERE IncidentId = $($inc.IncidentId)"
+    }
+    # Server back (or no reboot involved) but services down - one red email
+    elseif ($kind -eq 'Services' -and -not $failSent) {
+        $html = New-IncidentHtml -Server $server -Inc $inc -BootTime $bootTime -LastShutdown $lastShut `
+                    -Services $svcRows -Events (Get-IncidentEvents -Server $server -TriggerTime $inc.TriggerTime) `
+                    -StatusText 'ATTENTION' -Problem $problem -Recovered $false
+        Send-Email -Subject "ATTENTION - $server services not running - $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Body $html
+        Invoke-Sqlcmd -ServerInstance $CentralSqlInstance -Database $CentralDatabase -Query "UPDATE dbo.RestartIncident SET ServiceFailEmailSent = 1 WHERE IncidentId = $($inc.IncidentId)"
+    }
+}
