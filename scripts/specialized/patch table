@@ -1,0 +1,38 @@
+DROP TABLE IF EXISTS dbo.RestartEventMap;
+CREATE TABLE dbo.RestartEventMap (
+    MapId          INT IDENTITY(1,1) PRIMARY KEY,
+    LogName        NVARCHAR(200) NOT NULL,
+    EventId        INT           NOT NULL,
+    MessagePattern NVARCHAR(200) NULL,       -- LIKE pattern, NULL = any message
+    Category       NVARCHAR(20)  NOT NULL,
+    IsTrigger      BIT           NOT NULL
+);
+
+-- OS shutdown / boot / patch events
+INSERT INTO dbo.RestartEventMap (LogName, EventId, MessagePattern, Category, IsTrigger) VALUES
+('System', 1074, NULL, 'Shutdown',   1),
+('System', 6006, NULL, 'Shutdown',   1),
+('System', 6008, NULL, 'Unexpected', 1),
+('System', 41,   NULL, 'Unexpected', 1),
+('System', 6005, NULL, 'Boot',       0),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 43, NULL, 'PatchStart',   1),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 19, NULL, 'PatchSuccess', 1),
+('Microsoft-Windows-WindowsUpdateClient/Operational', 20, NULL, 'PatchFail',    1);
+
+-- Service events: SQL engine, Agent, SSIS, SSRS
+DECLARE @svc TABLE (Pat NVARCHAR(120));
+INSERT INTO @svc VALUES
+('The SQL Server (%'),
+('The SQL Server Agent (%'),
+('The SQL Server Integration Services%'),
+('The SQL Server Reporting Services%'),
+('The Report Server%'),
+('The Power BI Report Server%');
+
+INSERT INTO dbo.RestartEventMap (LogName, EventId, MessagePattern, Category, IsTrigger)
+SELECT 'System', 7036, s.Pat + '%service entered the stopped state%', 'ServiceStop', 1 FROM @svc s
+UNION ALL
+SELECT 'System', 7036, s.Pat + '%service entered the running state%', 'ServiceStart', 1 FROM @svc s
+UNION ALL
+SELECT 'System', v.EventId, s.Pat + '%', 'ServiceFail', 1
+FROM @svc s CROSS JOIN (VALUES (7000),(7009),(7031),(7034),(7038),(7041)) v(EventId);
