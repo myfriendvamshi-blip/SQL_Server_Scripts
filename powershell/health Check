@@ -1,4 +1,49 @@
 <#
+
+# SQL engine, Agent, Integration Services, Reporting Services (default + named instances)
+function Get-SqlServiceStatus {
+    param($ComputerName)
+
+    $svcs = Get-CimInstance -ComputerName $ComputerName -ClassName Win32_Service -ErrorAction Stop |
+        Where-Object { $_.Name -match '^(MSSQLSERVER|MSSQL\$.+|SQLSERVERAGENT|SQLAgent\$.+|MsDtsServer\d*|ReportServer(\$.+)?|SQLServerReportingServices|PowerBIReportServer)$' }
+
+    foreach ($s in $svcs) {
+        $started = $null
+        if ($s.State -eq 'Running' -and $s.ProcessId -and ([int]$s.ProcessId -gt 0)) {
+            try {
+                $p = Get-CimInstance -ComputerName $ComputerName -ClassName Win32_Process `
+                        -Filter "ProcessId=$([int]$s.ProcessId)" -ErrorAction Stop
+                if ($p) { $started = $p.CreationDate }
+            } catch { }
+        }
+        [pscustomobject]@{
+            ServerName  = $ComputerName
+            Name        = $s.Name
+            DisplayName = $s.DisplayName
+            State       = $s.State
+            StartMode   = $s.StartMode
+            StartName   = $s.StartName
+            StartTime   = $started
+        }
+    }
+}
+
+    if ($Services -and @($Services).Count -gt 0) {
+        $html += "<h3>SQL / SSIS / SSRS Services</h3><table border='1' cellpadding='4' style='border-collapse:collapse'>"
+        $html += "<tr><th>Server</th><th>Service</th><th>Status</th><th>Last Started</th><th>Start Mode</th><th>Run As Account</th></tr>"
+        foreach ($s in $Services) {
+            $up = ($s.State -eq 'Running') -or ($s.StartMode -ne 'Auto')
+            $started = if ($s.StartTime) { $s.StartTime } elseif ($s.State -eq 'Running') { 'Unknown' } else { 'Not running' }
+            $html += "<tr><td>$($s.ServerName)</td><td>$($s.DisplayName) [$($s.Name)]</td><td style='color:$(Color $up)'>$($s.State)</td><td>$started</td><td>$($s.StartMode)</td><td>$($s.StartName)</td></tr>"
+        }
+        $html += "</table>"
+    }
+INSERT INTO dbo.RestartEventMap (LogName, EventId, MessagePattern, Category, IsTrigger) VALUES
+('System', 43, '%Installation Started%',    'PatchStart',   1),
+('System', 19, '%Installation Successful%', 'PatchSuccess', 1),
+('System', 20, '%Installation Failure%',    'PatchFail',    1);
+
+
 ============================================================
  Restart / Patch / Service Event Monitor
  - Scans the central event table for shutdown, patch and
