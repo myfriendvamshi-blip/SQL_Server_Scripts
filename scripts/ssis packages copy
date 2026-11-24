@@ -1,0 +1,33 @@
+Option 1: T-SQL via linked server (copies folders and packages, preserving the blobs)
+
+-- Run on DESTINATION; [SRC] = linked server to source
+-- 1. Folders (skip ones that already exist)
+INSERT INTO msdb.dbo.sysssispackagefolders (folderid, parentfolderid, foldername)
+SELECT s.folderid, s.parentfolderid, s.foldername
+FROM [SRC].msdb.dbo.sysssispackagefolders s
+WHERE NOT EXISTS (SELECT 1 FROM msdb.dbo.sysssispackagefolders d
+                  WHERE d.folderid = s.folderid);
+
+-- 2. Packages
+INSERT INTO msdb.dbo.sysssispackages
+ (name, id, description, createdate, folderid, ownersid, packagedata,
+  packageformat, packagetype, vermajor, verminor, verbuild, vercomments, verid,
+  isencrypted, readrolesid, writerolesid)
+SELECT s.name, s.id, s.description, s.createdate, s.folderid,
+       SUSER_SID('sa'),            -- source owner SID may not exist here
+       s.packagedata, s.packageformat, s.packagetype, s.vermajor, s.verminor,
+       s.verbuild, s.vercomments, s.verid, s.isencrypted,
+       NULL, NULL                  -- role SIDs differ per server
+FROM [SRC].msdb.dbo.sysssispackages s
+WHERE NOT EXISTS (SELECT 1 FROM msdb.dbo.sysssispackages d WHERE d.id = s.id);
+
+Option 2: dtutil (generate commands, then run them from cmd)
+
+-- Run on SOURCE
+SELECT 'dtutil /SQL "' + COALESCE(f.foldername + '\', '') + p.name
+     + '" /SourceServer SRCSERVER /COPY SQL;"' + COALESCE(f.foldername + '\', '') + p.name
+     + '" /DestServer DESTSERVER'
+FROM msdb.dbo.sysssispackages p
+LEFT JOIN msdb.dbo.sysssispackagefolders f ON f.folderid = p.folderid;
+
+This flattens nested folders to one lev
