@@ -1,0 +1,46 @@
+$NewServer = "NEWSQL01"
+$OldServer = "OLDSQL01"
+$PkgPwd    = "Logic"
+$ExportDir = "C:\Temp\SSIS_Export"
+$WorkDir   = "C:\Temp\SSIS_Work"
+$TargetFolder = ""   # msdb folder on new server, e.g. "ETL" or "" for root
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+
+$pattern = "(?<![\w\-])" + [regex]::Escape($OldServer) + "(?![\w\-])"
+
+Get-ChildItem $ExportDir -Filter *.dtsx | ForEach-Object {
+    $name = $_.BaseName
+    $work = Join-Path $WorkDir $_.Name
+    $raw  = Get-Content $_.FullName -Raw
+
+    # Detect fully encrypted (level 3): no readable connection managers
+    $fullyEncrypted = ($raw -match 'ProtectionLevel="3"') -or ($raw -notmatch 'ConnectionManagers')
+
+    if ($fullyEncrypted) {
+        # Decrypt and re-save as level 2 (sensitive-only encryption, same password)
+        dtutil /FILE "`"$($_.FullName)`"" /DECRYPT $PkgPwd `
+               /COPY "FILE;`"$work`"" /ENCRYPT "FILE;`"$work`";2;$PkgPwd" /Quiet | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warning "Decrypt failed: $name"; return }
+    } else {
+        Copy-Item $_.FullName $work -Force
+    }
+
+    # Replace server name
+    $content = Get-Content $work -Raw
+    $updated = [regex]::Replace($content, $pattern, $NewServer, 'IgnoreCase')
+    if ($updated -ne $content) {
+        [System.IO.File]::WriteAllText($work, $updated, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "Updated: $name"
+    } else { Write-Host "No change: $name" }
+
+    # Import to new msdb
+    $dest = if ($TargetFolder) { "$TargetFolder\$name" } else { $name }
+    dtutil /FILE "`"$work`"" /DECRYPT $PkgPwd /DestServer $NewServer /COPY "SQL;`"$dest`"" /Quiet
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Import failed: $dest"; return }
+
+    # Optional: restore level 3 if that was the original
+    if ($fullyEncrypted) {
+        dtutil /SQL "`"$dest`"" /SourceServer $NewServer /DECRYPT $PkgPwd `
+               /ENCRYPT "SQL;`"$dest`";3;$PkgPwd" /Quiet | Out-Null
+    }
+}
