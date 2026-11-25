@@ -1,0 +1,67 @@
+# ===== CONFIG =====
+$OldServer = "OLDSQL01"
+$NewServer = "NEWSQL01"
+$WorkDir   = "C:\Temp\SSIS_Migrate"
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+
+# ===== 1. List packages + folder paths on source =====
+$query = @"
+WITH f AS (
+  SELECT folderid, parentfolderid,
+         CAST(foldername AS nvarchar(max)) AS path
+  FROM msdb.dbo.sysssispackagefolders
+  WHERE parentfolderid IS NULL
+  UNION ALL
+  SELECT c.folderid, c.parentfolderid,
+         CAST(f.path + N'\' + c.foldername AS nvarchar(max))
+  FROM msdb.dbo.sysssispackagefolders c
+  JOIN f ON c.parentfolderid = f.folderid
+)
+SELECT p.name AS PackageName,
+       CASE WHEN f.parentfolderid IS NULL THEN N'' ELSE f.path END AS FolderPath
+FROM msdb.dbo.sysssispackages p
+JOIN f ON p.folderid = f.folderid;
+"@
+$pkgs = Invoke-Sqlcmd -ServerInstance $OldServer -Query $query -TrustServerCertificate
+
+# ===== 2. Export, replace server name, import =====
+$pattern = "(?<![\w\-])" + [regex]::Escape($OldServer) + "(?![\w\-])"
+
+foreach ($p in $pkgs) {
+    $sqlPath = if ($p.FolderPath) { "$($p.FolderPath)\$($p.PackageName)" } else { $p.PackageName }
+    $sqlPath = $sqlPath -replace '^\\',''
+    $file    = Join-Path $WorkDir "$($p.PackageName).dtsx"
+
+    # Skip system folders (maintenance plans, data collector)
+    if ($p.FolderPath -match 'Data Collector|Maintenance Plans') { continue }
+
+    # Export from old msdb
+    dtutil /SQL "`"$sqlPath`"" /SourceServer $OldServer /COPY "FILE;`"$file`"" /Quiet | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Export failed: $sqlPath"; continue }
+
+    # Replace server name (preserve file encoding)
+    $content = Get-Content $file -Raw
+    $updated = [regex]::Replace($content, $pattern, $NewServer, 'IgnoreCase')
+    if ($updated -ne $content) {
+        [System.IO.File]::WriteAllText($file, $updated, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "Updated server refs: $sqlPath"
+    }
+
+    # Create folder on destination if needed
+    if ($p.FolderPath) {
+        $parent = ""
+        foreach ($seg in $p.FolderPath.Split('\')) {
+            if ($seg -eq "") { continue }
+            dtutil /FExists "SQL;`"$parent\$seg`"" /DestServer $NewServer 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                dtutil /FCreate "SQL;`"$parent`";`"$seg`"" /DestServer $NewServer | Out-Null
+            }
+            $parent = "$parent\$seg"
+        }
+    }
+
+    # Import into new msdb
+    dtutil /FILE "`"$file`"" /DestServer $NewServer /COPY "SQL;`"$sqlPath`"" /Quiet
+    if ($LASTEXITCODE -eq 0) { Write-Host "Imported: $sqlPath" }
+    else { Write-Warning "Import failed: $sqlPath" }
+}
